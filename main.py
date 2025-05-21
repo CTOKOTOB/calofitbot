@@ -2,13 +2,28 @@ import asyncio
 import os
 import aiohttp
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 
 import json
 import jwt
 import time
 import requests
+
+# Текст справки
+HELP_TEXT = """
+🍏 <b>CaloFitBot - помощник по подсчёту калорий</b>
+
+Просто напишите название продукта или блюда, и бот ответит его калорийностью.
+
+<b>Основные команды:</b>
+/start - Начало работы
+/help - Показать эту справку
+
+<b>Как использовать:</b>
+• Напишите "яблоко" - получите калорийность
+• Или "порция спагетти" - калории на порцию
+"""
 
 def get_iam_token_from_keyfile(path_to_keyfile: str) -> str:
     with open(path_to_keyfile, 'r') as f:
@@ -76,6 +91,11 @@ async def query_yandex_gpt(prompt: str) -> str:
 @dp.message(CommandStart())
 async def start(message: Message):
     await message.answer("Привет! Напиши мне продукт или блюдо, а я скажу сколько в нём калорий")
+
+# Добавляем новый обработчик для /help
+@dp.message(Command("help"))
+async def help_command(message: types.Message):
+    await message.answer(HELP_TEXT, parse_mode="HTML")
 
 @dp.message()
 async def handle_message(message: Message):
