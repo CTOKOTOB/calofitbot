@@ -44,8 +44,7 @@ YANDEX_GPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completio
 bot = Bot(token=os.environ["CALOFITBOT_TOKEN"])
 dp = Dispatcher()
 
-SYSTEM_PROMPT = "Ты помощник по питанию. Пользователь пишет название блюда или продукта, а ты отвечаешь только числом — сколько в нём примерно килокалорий. Никаких слов, только число."
-
+SYSTEM_PROMPT = "Ты помощник по питанию. Пользователь пишет название блюда или продукта, а ты отвечаешь только числом — сколько в нём примерно килокалорий. Никаких слов, только число. Если указывается готовая еда или блюдо, то стоит считать не за 100грамм, а за порцию."
 async def query_yandex_gpt(prompt: str) -> str:
     headers = {
         "Authorization": f"Bearer {YANDEX_API_KEY}",  # Исправлено на Bearer
