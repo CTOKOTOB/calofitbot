@@ -48,6 +48,7 @@ class Database:
 
     async def connect(self):
         self.conn = psycopg2.connect(**DB_CONFIG)
+        self.conn.autocommit = False  # Отключаем авто-коммит для лучшего контроля
 
     async def get_user(self, telegram_id):
         with self.conn.cursor(cursor_factory=DictCursor) as cursor:
@@ -56,14 +57,19 @@ class Database:
 
     async def create_user(self, telegram_id, username, first_name, last_name):
         with self.conn.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO users (telegram_id, username, first_name, last_name, registration_date) "
-                "VALUES (%s, %s, %s, %s, NOW()) RETURNING user_id",
-                (telegram_id, username, first_name, last_name)
-            )
-            user_id = cursor.fetchone()[0]
-            self.conn.commit()
-            return user_id
+            try:
+                cursor.execute(
+                    "INSERT INTO users (telegram_id, username, first_name, last_name, registration_date) "
+                    "VALUES (%s, %s, %s, %s, NOW()) RETURNING user_id",
+                    (telegram_id, username, first_name, last_name)
+                )
+                user_id = cursor.fetchone()[0]
+                self.conn.commit()
+                return user_id
+            except Exception as e:
+                self.conn.rollback()
+                print(f"Error creating user: {e}")
+                raise
 
     async def update_user_profile(self, user_id, gender, height, birth_date):
         with self.conn.cursor() as cursor:
