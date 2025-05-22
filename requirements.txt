@@ -3,3 +3,4 @@ aiohttp==3.11.18
 pyjwt>=2.10.1
 requests>=2.32.3
 cryptography>=42.0.0
+psycopg2-binary==2.9.10
