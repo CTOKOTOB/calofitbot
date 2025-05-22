@@ -88,12 +88,12 @@ class Database:
             )
             self.conn.commit()
 
-    async def add_calorie_record(self, user_id, food_name, calories, proteins=None, fats=None, carbs=None):
+    async def add_calorie_record(self, user_id, food_name, calories):
         with self.conn.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO calorie_intake (user_id, food_name, calories, proteins, fats, carbohydrates, entry_date) "
+                "INSERT INTO calorie_intake (user_id, food_name, calories, entry_date) "
                 "VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE)",
-                (user_id, food_name, calories, proteins, fats, carbs)
+                (user_id, food_name, calories)
             )
             self.conn.commit()
 
