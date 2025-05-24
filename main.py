@@ -9,6 +9,8 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 from jwt import encode as jwt_encode
 from cryptography.hazmat.primitives import serialization
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 
 HELP_TEXT = """
 🍏 <b>CaloFitBot - помощник по подсчёту калорий</b>
@@ -20,6 +22,8 @@ HELP_TEXT = """
 /help - Показать эту справку
 /del - Удалить последнюю запись
 /report - Отчет за сегодняшний день
+
+<b>Лимиты:</b> Не более 40 записей в день
 
 """
 
@@ -104,12 +108,37 @@ async def get_or_create_user(user_obj) -> int:
         )
 
 
-async def log_calories(user_id: int, input_text: str, calories: int | None):
+async def log_calories(user_id: int, input_text: str, calories: int | None, message: Message):
     async with db_pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO calories (user_id, input, calories) VALUES ($1, $2, $3)",
-            user_id, input_text, calories
-        )
+        try:
+            # Проверяем количество записей за сегодня
+            today_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM calories "
+                "WHERE user_id = $1 AND created_at >= current_date",
+                user_id
+            )
+
+            # Предупреждение при 35+ записях
+            if 35 <= today_count < 40:
+                warning = f"⚠️ Внимание: осталось {40 - today_count} из 40 записей на сегодня"
+                await message.reply(warning)
+
+            # Блокировка при достижении лимита
+            if today_count >= 40:
+                raise ValueError("❌ Достигнут дневной лимит в 40 записей")
+
+            # Добавляем новую запись
+            await conn.execute(
+                "INSERT INTO calories (user_id, input, calories) "
+                "VALUES ($1, $2, $3)",
+                user_id, input_text, calories
+            )
+
+        except asyncpg.exceptions.CheckViolationError:
+            raise ValueError("❌ Достигнут дневной лимит в 40 записей")
+
+
+
 
 @dp.message(CommandStart())
 async def handle_start(message: Message):
@@ -120,22 +149,142 @@ async def handle_start(message: Message):
 async def handle_help(message: Message):
     await message.answer(HELP_TEXT, parse_mode="HTML")
 
+
+@dp.message(Command("del"))
+async def handle_delete_last_entry(message: Message):
+    user_id = await get_or_create_user(message.from_user)
+
+    async with db_pool.acquire() as conn:
+        try:
+            # Получаем и удаляем запись за один запрос, возвращая данные удалённой записи
+            deleted_entry = await conn.fetchrow(
+                """DELETE FROM calories
+                WHERE id = (
+                    SELECT id FROM calories
+                    WHERE user_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                )
+                RETURNING input, calories, created_at""",
+                user_id
+            )
+
+            if deleted_entry:
+                # Форматируем сообщение с информацией об удалённой записи
+                entry_info = (
+                    f"✅ Удалена запись:\n"
+                    f"🍽 {deleted_entry['input']}\n"
+                    f"🔥 {deleted_entry['calories'] or '?'} ккал\n"
+                    f"⏰ {deleted_entry['created_at'].strftime('%d.%m.%Y %H:%M')}"
+                )
+                await message.reply(entry_info)
+            else:
+                await message.reply("ℹ️ У вас нет записей для удаления.")
+
+        except Exception as e:
+            await message.reply(f"⚠️ Ошибка при удалении: {str(e)}")
+            print(f"Delete error for user {user_id}: {str(e)}")
+
+
+@dp.message(Command("del_all"))
+async def handle_delete_all_user_data(message: Message):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, удалить всё", callback_data="confirm_delete")
+    builder.button(text="❌ Отмена", callback_data="cancel_delete")
+
+    await message.reply(
+        "⚠️ Вы уверены что хотите удалить ВСЕ ваши данные?\n"
+        "Это действие нельзя отменить!",
+        reply_markup=builder.as_markup()
+    )
+
+@dp.callback_query(lambda c: c.data == "confirm_delete")
+async def confirm_delete(callback: types.CallbackQuery):
+    user_id = await get_or_create_user(callback.from_user)
+
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        await callback.message.edit_text("🗑️ Все ваши данные полностью удалены!")
+
+@dp.callback_query(lambda c: c.data == "cancel_delete")
+async def cancel_delete(callback: types.CallbackQuery):
+    await callback.message.edit_text("✅ Удаление отменено")
+
+
+@dp.message(Command("report"))
+async def handle_daily_report(message: Message):
+    user_id = await get_or_create_user(message.from_user)
+
+    async with db_pool.acquire() as conn:
+        try:
+            # Получаем записи за сегодня (начиная с полуночи)
+            today_entries = await conn.fetch(
+                """SELECT input, calories, created_at
+                FROM calories
+                WHERE user_id = $1
+                AND created_at >= current_date
+                ORDER BY created_at""",
+                user_id
+            )
+
+            if not today_entries:
+                await message.reply("📊 Сегодня у вас пока нет записей.")
+                return
+
+            # Формируем красивый отчет
+            report_lines = ["📅 <b>Отчет за сегодня</b> 📅\n"]
+            total_calories = 0
+
+            for entry in today_entries:
+                time_str = entry['created_at'].strftime('%H:%M')
+                calories = entry['calories'] or 0
+                total_calories += calories
+
+                report_lines.append(
+                    f"⏰ {time_str} | 🍽 {entry['input']} | 🔥 {calories if entry['calories'] else '?'} ккал"
+                )
+
+            # Добавляем итоговую строку
+            report_lines.append(f"\n<b>Итого за день:</b> 🔥 {total_calories} ккал")
+
+            # Разбиваем сообщение на части, если оно слишком длинное
+            report_text = "\n".join(report_lines)
+            if len(report_text) > 4000:  # Ограничение Telegram на длину сообщения
+                parts = [report_text[i:i+4000] for i in range(0, len(report_text), 4000)]
+                for part in parts:
+                    await message.answer(part, parse_mode="HTML")
+                    await asyncio.sleep(0.5)  # Чтобы избежать флуда
+            else:
+                await message.answer(report_text, parse_mode="HTML")
+
+        except Exception as e:
+            await message.reply(f"⚠️ Ошибка при формировании отчета: {str(e)}")
+            print(f"Report error for user {user_id}: {str(e)}")
+
+
+
 @dp.message()
 async def handle_text(message: Message):
     user_id = await get_or_create_user(message.from_user)
     input_text = message.text.strip()
 
-    if input_text.isdigit():
-        await log_calories(user_id, input_text, int(input_text))
-        await message.reply(f"Записано: {input_text} ккал.")
-    else:
-        calories_str = await query_yandex_gpt(input_text)
-        calories = int(calories_str) if calories_str.isdigit() else None
-        await log_calories(user_id, input_text, calories)
-        if calories:
-            await message.reply(f"Записал {calories} ккал.")
+    try:
+        if input_text.isdigit():
+            await log_calories(user_id, input_text, int(input_text), message)
+            await message.reply(f"✅ Записано: {input_text} ккал")
         else:
-            await message.reply("Не удалось определить калорийность.")
+            calories_str = await query_yandex_gpt(input_text)
+            calories = int(calories_str) if calories_str.isdigit() else None
+            await log_calories(user_id, input_text, calories, message)
+            await message.reply(f"✅ Записано: {calories or '?'} ккал" +
+                              (" (примерно)" if calories else ""))
+
+    except ValueError as e:
+        await message.reply(str(e))
+    except Exception as e:
+        await message.reply("🔧 Произошла техническая ошибка")
+        print(f"Error for user {user_id}: {str(e)}")
+
 
 async def main():
     global YANDEX_API_KEY
