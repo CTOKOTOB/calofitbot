@@ -143,7 +143,9 @@ async def log_calories(user_id: int, input_text: str, calories: int | None, mess
 @dp.message(CommandStart())
 async def handle_start(message: Message):
     user_id = await get_or_create_user(message.from_user)
-    await message.answer("Привет! Напиши продукт или блюдо, а я скажу сколько в нём калорий.")
+    #await message.answer("Приветствую, человек! Я - бот, сверхразумное существо из другого мира. Напиши, сколько калорий было в этом приёме пищи — я сохраню данные в базу. Если не знаешь точное число, просто перечисли продукты или блюда, и я уточню калорийность с помощью нейросети, а потом добавлю в базу")
+    await message.answer("Привет! Я бот помощник по питанию. Напиши, сколько калорий ты съел — я сохраню это. Не знаешь точно? Просто перечисли продукты, я сам посчитаю и добавлю в базу.")
+
 
 @dp.message(Command("help"))
 async def handle_help(message: Message):
