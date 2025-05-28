@@ -138,3 +138,4 @@ async def report_show(message: Message, user_id: int, selected_dates: list[str])
             final_report.append("\n".join(lines))
 
     await message.answer("\n\n".join(final_report), parse_mode="HTML")
+
