@@ -1,42 +1,43 @@
-from aiogram import Router, types
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime, timedelta
-
 from db.database import get_db_pool, get_or_create_user
+import asyncio
 
 router = Router()
 user_selected_dates = {}
+user_days_map = {}
+
+MAX_BUTTONS = 16
+MIN_BUTTONS = 4
 
 @router.message(Command("report"))
 async def report_command(message: Message):
     user_id = message.from_user.id
-    db_pool = get_db_pool()
+    today = datetime.now().date()
 
+    db_pool = get_db_pool()
     async with db_pool.acquire() as conn:
         user_db_id = await get_or_create_user(message.from_user)
         rows = await conn.fetch(
-            "SELECT DISTINCT DATE(created_at) as date FROM calories WHERE user_id = $1 ORDER BY date DESC",
+            "SELECT DISTINCT DATE(created_at) as day FROM calories WHERE user_id = $1 ORDER BY day DESC",
             user_db_id
         )
-        all_days = [row["date"] for row in rows]
+        days_with_data = [r['day'] for r in rows]
 
-    # Гарантированно минимум 4 дня
-    if len(all_days) < 4:
-        today = datetime.now().date()
-        all_days = [today - timedelta(days=i) for i in range(4)]
+    total_days = len(days_with_data)
+    buttons_count = min(MAX_BUTTONS, max(MIN_BUTTONS, ((total_days + 3) // 4) * 4))
 
-    # Ограничим максимумом в 16
-    days = all_days[:16]
+    # Формируем список дней начиная с сегодня, даже если нет записей
+    all_days = [today - timedelta(days=i) for i in range(buttons_count)]
 
     user_selected_dates[user_id] = set()
-    await send_date_selection(message, user_id, days)
+    user_days_map[user_id] = all_days  # сохраняем дни для пользователя
+    await send_date_selection(message, user_id, all_days)
 
-async def send_date_selection(message_or_callback, user_id, _ignored_days=None):
-    today = datetime.now().date()
-    days = [today - timedelta(days=i) for i in range(16)]  # всегда 16 последних дней
-
+async def send_date_selection(message_or_callback, user_id, days):
     builder = InlineKeyboardBuilder()
     selected = user_selected_dates.get(user_id, set())
 
@@ -47,14 +48,13 @@ async def send_date_selection(message_or_callback, user_id, _ignored_days=None):
             text = f"✅ {text}"
         builder.button(text=text, callback_data=f"select_{iso}")
 
-    builder.adjust(4, 4, 4, 4)  # 4 ряда по 4 кнопки
-    builder.row(types.InlineKeyboardButton(text="📥 Показать отчёт", callback_data="report_show"))
+    builder.button(text="📥 Показать отчёт", callback_data="report_show")
+    builder.adjust(4)
 
     await message_or_callback.answer(
-        "📆 Выберите одну или несколько (максимум 4) дат:",
+        "📆 Выберите одну или несколько дат:",
         reply_markup=builder.as_markup()
     )
-
 
 @router.callback_query(lambda c: c.data and c.data.startswith("select_"))
 async def date_select_callback(callback: CallbackQuery):
@@ -67,31 +67,23 @@ async def date_select_callback(callback: CallbackQuery):
     else:
         selected.add(date_iso)
 
-    if len(selected) == 4:
-        await report_show_callback(callback, auto_trigger=True)
-    else:
-        await update_date_selection(callback, user_id)
-
-async def update_date_selection(callback: CallbackQuery, user_id: int):
-    db_pool = get_db_pool()
-    async with db_pool.acquire() as conn:
-        user_db_id = await get_or_create_user(callback.from_user)
-        rows = await conn.fetch(
-            "SELECT DISTINCT DATE(created_at) as date FROM calories WHERE user_id = $1 ORDER BY date DESC",
-            user_db_id
-        )
-        all_days = [row["date"] for row in rows]
-
-    if len(all_days) < 4:
+    # Используем сохранённый список дат, а не заново генерируем
+    days = user_days_map.get(user_id)
+    if not days:
         today = datetime.now().date()
-        all_days = [today - timedelta(days=i) for i in range(4)]
+        days = [today - timedelta(days=i) for i in range(MAX_BUTTONS)]
 
-    days = all_days[:16]
     await send_date_selection(callback.message, user_id, days)
     await callback.answer()
 
+    if len(selected) == 4:
+        await asyncio.sleep(0.1)
+        await report_show(callback.message, user_id, sorted(selected))
+        user_selected_dates.pop(user_id, None)
+        user_days_map.pop(user_id, None)
+
 @router.callback_query(lambda c: c.data == "report_show")
-async def report_show_callback(callback: CallbackQuery, auto_trigger: bool = False):
+async def report_show_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     selected_dates = sorted(user_selected_dates.get(user_id, []))
 
@@ -99,11 +91,20 @@ async def report_show_callback(callback: CallbackQuery, auto_trigger: bool = Fal
         await callback.answer("Выберите хотя бы одну дату")
         return
 
+    await report_show(callback.message, user_id, selected_dates)
+    user_selected_dates.pop(user_id, None)
+    user_days_map.pop(user_id, None)
+
+async def report_show(message: Message, user_id: int, selected_dates: list[str]):
     db_pool = get_db_pool()
     final_report = []
 
     async with db_pool.acquire() as conn:
-        user_db_id = await get_or_create_user(callback.from_user)
+        row_user = await conn.fetchrow("SELECT id FROM users WHERE telegram_id = $1", user_id)
+        if not row_user:
+            await message.answer("Пользователь не найден.")
+            return
+        user_db_id = row_user["id"]
 
         for date_iso in selected_dates:
             date = datetime.fromisoformat(date_iso).date()
@@ -133,7 +134,4 @@ async def report_show_callback(callback: CallbackQuery, auto_trigger: bool = Fal
             lines.append(f"<i>Итого:</i> 🔥 {total} ккал\n")
             final_report.append("\n".join(lines))
 
-    await callback.message.answer("\n\n".join(final_report), parse_mode="HTML")
-    user_selected_dates.pop(user_id, None)
-    if not auto_trigger:
-        await callback.answer()
+    await message.answer("\n\n".join(final_report), parse_mode="HTML")
