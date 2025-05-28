@@ -48,7 +48,10 @@ async def send_date_selection(message_or_callback, user_id, days):
             text = f"✅ {text}"
         builder.button(text=text, callback_data=f"select_{iso}")
 
-    builder.button(text="📥 Показать отчёт", callback_data="report_show")
+    # Добавляем кнопку "Показать отчёт", если ещё не выбрано ровно 4 даты
+    if len(selected) < 4:
+                builder.button(text="📥 Показать отчёт", callback_data="report_show")
+
     builder.adjust(4)
 
     await message_or_callback.answer(
