@@ -109,6 +109,32 @@ async def report_show(message: Message, user_id: int, selected_dates: list[str])
             return
         user_db_id = row_user["id"]
 
+        # Получаем последнюю анкету пользователя
+        profile = await conn.fetchrow("""
+            SELECT gender, age, height_cm, weight_kg
+            FROM user_profiles
+            WHERE user_id = $1
+            ORDER BY recorded_at DESC
+            LIMIT 1
+        """, user_db_id)
+
+        if not profile:
+            await message.answer("Сначала введите данные с помощью команды /start.")
+            return
+
+        gender = profile["gender"]
+        age = profile["age"]
+        height = profile["height_cm"]
+        weight = profile["weight_kg"]
+
+        # Считаем BMR (норма калорий)
+        if gender == "male":
+            bmr = 10 * weight + 6.25 * height - 5 * age + 5
+        elif gender == "female":
+            bmr = 10 * weight + 6.25 * height - 5 * age - 161
+        else:
+            bmr = 10 * weight + 6.25 * height - 5 * age
+
         for date_iso in selected_dates:
             date = datetime.fromisoformat(date_iso).date()
             rows = await conn.fetch(
@@ -134,8 +160,10 @@ async def report_show(message: Message, user_id: int, selected_dates: list[str])
                 cal = r['calories'] if r['calories'] is not None else '?'
                 total += r['calories'] or 0
                 lines.append(f"⏰ {time_str} | 🍽 {r['input']} | 🔥 {cal} ккал")
-            lines.append(f"<i>Итого:</i> 🔥 {total} ккал\n")
+            lines.append(f"<i>Итого:</i> 🔥 {total} ккал")
+            lines.append(f"📊 <i>Норма:</i> ≈ {int(bmr)} ккал\n")
             final_report.append("\n".join(lines))
 
     await message.answer("\n\n".join(final_report), parse_mode="HTML")
+
 
