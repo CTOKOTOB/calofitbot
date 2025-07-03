@@ -161,7 +161,7 @@ async def report_show(message: Message, user_id: int, selected_dates: list[str])
                 total += r['calories'] or 0
                 lines.append(f"⏰ {time_str} | 🍽 {r['input']} | 🔥 {cal} ккал")
             lines.append(f"<i>Итого:</i> 🔥 {total} ккал")
-            lines.append(f"📊 <i>Норма:</i> ≈ {int(bmr)} ккал\n")
+            lines.append(f"<i>Норма:</i> 📊 ≈ {int(bmr)} ккал\n")
             final_report.append("\n".join(lines))
 
     await message.answer("\n\n".join(final_report), parse_mode="HTML")
