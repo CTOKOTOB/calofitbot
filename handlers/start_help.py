@@ -36,7 +36,7 @@ back_kb = ReplyKeyboardMarkup(
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        f"Привет, {message.from_user.first_name}! Я бот помощник по питанию, буду фиксировать твои съеденные калории в течение дня, а если не знаешь точное число, просто сообщи блюдо или продукт - я сам уточню у нейросети и запишу результат.\nДавай введем твои данные для более точного расчета.\n Выбери свой пол:",
+        f"Привет, {message.from_user.first_name}! \nЯ бот помощник по питанию, буду фиксировать твои съеденные калории в течение дня, а если не знаешь точное число, просто сообщи блюдо или продукт - я сам уточню у нейросети и запишу результат.\nДавай введем твои данные для более точного расчета.\n Выбери свой пол:",
         reply_markup=gender_kb
     )
     await state.set_state(StartStates.waiting_for_gender)
