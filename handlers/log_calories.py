@@ -19,18 +19,15 @@ async def handle_text(message: Message) -> None:
         if input_text.isdigit():
             calories = int(input_text)
         else:
-            # 1. Попытка получить из кэша
-            calories = await get_cached_calories(input_text)
+            calories = await get_cached_calories(user_id, input_text)    # попытка получить из кэша
             if calories is None:
-                # 2. Запрашиваем YandexGPT, если в кэше нет
+                # запрашиваем YandexGPT, если в кэше нет
                 calories_str = await query_yandex_gpt(input_text)
                 logger.debug(f"Yandex GPT response: '{calories_str}'")
 
-                # Улучшенное извлечение чисел
                 numbers = [int(m) for m in re.findall(r'\d+', calories_str)]
-                calories = numbers[0] if numbers else None  # берем первое число или None
+                calories = numbers[0] if numbers else None
 
-                # 3. Сохраняем в кэш (если нашли число)
                 if calories is not None:
                     await cache_calories(input_text, calories)
 
@@ -65,11 +62,21 @@ async def log_calories(user_id: int, input_text: str, calories: Optional[int], m
             user_id, input_text, calories
         )
 
-async def get_cached_calories(input_text: str) -> Optional[int]:
+async def get_cached_calories(user_id: int, input_text: str) -> Optional[int]:
     db_pool = get_db_pool()
     async with db_pool.acquire() as conn:
+        # Сначала смотрим локальный кэш пользователя
         row = await conn.fetchrow(
-            "SELECT calories FROM calorie_cache WHERE input = $1",
+           # "SELECT calories FROM user_calorie_cache WHERE user_id = $1 AND input = $2",
+            "SELECT calories FROM user_calorie_cache WHERE user_id = $1 AND LOWER(input) = LOWER($2)",
+            user_id, input_text
+        )
+        if row:
+            return row["calories"]
+        # Потом глобальный кэш
+        row = await conn.fetchrow(
+            #"SELECT calories FROM calorie_cache WHERE input = $1",
+            "SELECT calories FROM calorie_cache WHERE LOWER(input) = LOWER($1)",
             input_text
         )
         return row["calories"] if row else None
