@@ -12,7 +12,6 @@ class AddCacheStates(StatesGroup):
     waiting_for_input = State()
     waiting_for_calories = State()
 
-# Кнопка Назад
 back_button = KeyboardButton(text="⬅️ Назад")
 back_kb = ReplyKeyboardMarkup(keyboard=[[back_button]], resize_keyboard=True)
 
@@ -60,7 +59,6 @@ async def input_calories(message: Message, state: FSMContext):
 
     db_pool = get_db_pool()
     async with db_pool.acquire() as conn:
-        # Проверяем есть ли уже такая запись без учёта регистра
         exists = await conn.fetchval(
             "SELECT 1 FROM user_calorie_cache WHERE user_id = $1 AND LOWER(input) = LOWER($2)",
             user_id, input_text
