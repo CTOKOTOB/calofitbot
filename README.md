@@ -16,10 +16,11 @@ alias activate='cd ~/projects/calofitbot && source venv/bin/activate'
 
 commands:
 start - Знакомство\Обновить данные
-report - Отчет 
+report - Отчет
 del - Удалить последнюю запись
 graph - График
 add_cache - Запомнить блюдо
+from_cache - Добавить продукт из списка
 edit_cache - Редактировать список
 del_all - Удалить все мои данные
 
