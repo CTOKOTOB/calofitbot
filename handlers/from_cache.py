@@ -24,7 +24,7 @@ async def cmd_from_cache(message: Message):
 
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, input, calories FROM user_calorie_cache WHERE user_id = $1 ORDER BY input",
+            "SELECT id, input, calories FROM user_calorie_cache WHERE user_id = $1 ORDER BY id",
             user_id
         )
 

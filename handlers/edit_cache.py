@@ -14,7 +14,7 @@ async def edit_cache_command(message: Message):
 
     async with db_pool.acquire() as conn:
         records = await conn.fetch(
-            "SELECT id, input, calories FROM user_calorie_cache WHERE user_id = $1 ORDER BY input",
+            "SELECT id, input, calories FROM user_calorie_cache WHERE user_id = $1 ORDER BY id",
             user_id
         )
 
@@ -57,7 +57,7 @@ async def handle_cache_delete(callback: CallbackQuery):
 
         # Повторно отправим список
         records = await conn.fetch(
-            "SELECT id, input, calories FROM user_calorie_cache WHERE user_id = $1 ORDER BY input",
+            "SELECT id, input, calories FROM user_calorie_cache WHERE user_id = $1 ORDER BY id",
             user_id
         )
 
