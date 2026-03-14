@@ -70,7 +70,7 @@ async def send_graph(message: types.Message):
     norm_calories = [bmr for _ in dates]
 
     # Построение графика
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(6, 3))
     plt.plot(dates, totals, marker='o', color='blue', label='Факт. калории')
     plt.plot(dates, norm_calories, linestyle='--', color='red', label='Норма калорий')
     plt.title("Калории по дням")
