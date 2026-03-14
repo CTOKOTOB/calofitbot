@@ -28,6 +28,7 @@ async def send_graph(message: types.Message):
             SELECT DATE(created_at) AS date, SUM(calories) AS total
             FROM calories
             WHERE user_id = $1
+              AND created_at >= CURRENT_DATE - INTERVAL '30 days'
             GROUP BY DATE(created_at)
             ORDER BY DATE(created_at)
         """, user_id)
